@@ -1,82 +1,163 @@
 const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('./konter_pulsa.db');
 
-db.serialize(() => {
-  db.run(`DROP TABLE IF EXISTS customers`);
-  db.run(`DROP TABLE IF EXISTS employees`);
-  db.run(`DROP TABLE IF EXISTS branches`);
-  db.run(`DROP TABLE IF EXISTS products`);
-  db.run(`DROP TABLE IF EXISTS sales`);
+const oltp = new sqlite3.Database('./konter_oltp.db');
 
-  db.run(`CREATE TABLE customers (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT,
-      phone TEXT,
-      created_at TEXT
-  );`);
+oltp.serialize(() => {
+  oltp.run(`CREATE TABLE IF NOT EXISTS customers (
+    customer_id INTEGER PRIMARY KEY,
+    name VARCHAR,
+    phone_number VARCHAR,
+    email VARCHAR,
+    created_at TIMESTAMP
+  )`);
 
-  db.run(`CREATE TABLE employees (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT,
-      branch_id INTEGER,
-      position TEXT,
-      hired_at TEXT
-  );`);
+  oltp.run(`CREATE TABLE IF NOT EXISTS providers (
+    provider_id INTEGER PRIMARY KEY,
+    provider_name VARCHAR,
+    provider_code VARCHAR,
+    created_at TIMESTAMP
+  )`);
 
-  db.run(`CREATE TABLE branches (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      branch_name TEXT,
-      city TEXT
-  );`);
+  oltp.run(`CREATE TABLE IF NOT EXISTS product_categories (
+    category_id INTEGER PRIMARY KEY,
+    category_name VARCHAR,
+    description TEXT
+  )`);
 
-  db.run(`CREATE TABLE products (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      provider TEXT,
-      type TEXT,      -- Pulsa / Data
-      value INTEGER,
-      price INTEGER
-  );`);
+  oltp.run(`CREATE TABLE IF NOT EXISTS products (
+    product_id INTEGER PRIMARY KEY,
+    provider_id INTEGER,
+    category_id INTEGER,
+    product_name VARCHAR,
+    nominal INTEGER,
+    price DECIMAL,
+    cost_price DECIMAL,
+    active BOOLEAN,
+    created_at TIMESTAMP
+  )`);
 
-  db.run(`CREATE TABLE sales (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      customer_id INTEGER,
-      employee_id INTEGER,
-      branch_id INTEGER,
-      product_id INTEGER,
-      quantity INTEGER,
-      total_amount INTEGER,
-      sale_date TEXT
-  );`);
+  oltp.run(`CREATE TABLE IF NOT EXISTS branches (
+    branch_id INTEGER PRIMARY KEY,
+    branch_name VARCHAR,
+    address TEXT,
+    city VARCHAR,
+    phone_number VARCHAR,
+    created_at TIMESTAMP
+  )`);
 
-  db.run(`INSERT INTO branches (branch_name, city) VALUES
-      ('Cabang A', 'Jakarta'),
-      ('Cabang B', 'Bandung'),
-      ('Cabang C', 'Surabaya');`);
+  oltp.run(`CREATE TABLE IF NOT EXISTS employees (
+    employee_id INTEGER PRIMARY KEY,
+    branch_id INTEGER,
+    name VARCHAR,
+    role VARCHAR,
+    phone_number VARCHAR,
+    email VARCHAR,
+    hire_date DATE,
+    status VARCHAR,
+    created_at TIMESTAMP
+  )`);
 
-  db.run(`INSERT INTO employees (name, branch_id, position, hired_at) VALUES
-      ('Rudi', 1, 'Kasir', '2024-02-01'),
-      ('Ani', 1, 'Staff', '2024-05-11'),
-      ('Bima', 2, 'Kasir', '2023-09-21'),
-      ('Dita', 3, 'Kasir', '2024-01-15');`);
+  oltp.run(`CREATE TABLE IF NOT EXISTS transactions (
+    transaction_id INTEGER PRIMARY KEY,
+    branch_id INTEGER,
+    employee_id INTEGER,
+    customer_id INTEGER,
+    transaction_date TIMESTAMP,
+    payment_method VARCHAR,
+    total_amount DECIMAL,
+    status VARCHAR
+  )`);
 
-  db.run(`INSERT INTO customers (name, phone, created_at) VALUES
-      ('Andi', '08123456789', '2025-01-01'),
-      ('Sinta', '08234567890', '2025-01-05'),
-      ('Bagus', '08345678901', '2025-02-12');`);
-
-  db.run(`INSERT INTO products (provider, type, value, price) VALUES
-      ('Telkomsel', 'Pulsa', 5000, 6000),
-      ('Telkomsel', 'Pulsa', 10000, 11500),
-      ('Indosat', 'Data', 5, 25000),
-      ('XL', 'Pulsa', 20000, 22000);`);
-
-  db.run(`INSERT INTO sales (customer_id, employee_id, branch_id, product_id, quantity, total_amount, sale_date) VALUES
-      (1, 1, 1, 1, 2, 12000, '2025-09-01'),
-      (2, 2, 1, 2, 1, 11500, '2025-09-02'),
-      (1, 3, 2, 3, 1, 25000, '2025-09-05'),
-      (3, 4, 3, 4, 3, 66000, '2025-09-07');`);
-
-  console.log("✅ OLTP database created and dummy data inserted.");
+  oltp.run(`CREATE TABLE IF NOT EXISTS transaction_items (
+    item_id INTEGER PRIMARY KEY,
+    transaction_id INTEGER,
+    product_id INTEGER,
+    quantity INTEGER,
+    unit_price DECIMAL,
+    subtotal DECIMAL
+  )`);
 });
 
-db.close();
+const dw = new sqlite3.Database('./konter_pulsa.db');
+
+dw.serialize(() => {
+  dw.run(`CREATE TABLE IF NOT EXISTS dim_branch (
+    branch_id INTEGER PRIMARY KEY,
+    branch_name VARCHAR,
+    city VARCHAR,
+    address TEXT,
+    phone_number VARCHAR,
+    opened_date DATE
+  )`);
+
+  dw.run(`CREATE TABLE IF NOT EXISTS dim_employee (
+    employee_id INTEGER PRIMARY KEY,
+    name VARCHAR,
+    role VARCHAR,
+    branch_id INTEGER,
+    hire_date DATE,
+    status VARCHAR
+  )`);
+
+  dw.run(`CREATE TABLE IF NOT EXISTS dim_customer (
+    customer_id INTEGER PRIMARY KEY,
+    name VARCHAR,
+    phone_number VARCHAR,
+    email VARCHAR,
+    first_transaction_date DATE
+  )`);
+
+  dw.run(`CREATE TABLE IF NOT EXISTS dim_provider (
+    provider_id INTEGER PRIMARY KEY,
+    provider_name VARCHAR,
+    provider_code VARCHAR
+  )`);
+
+  dw.run(`CREATE TABLE IF NOT EXISTS dim_category (
+    category_id INTEGER PRIMARY KEY,
+    category_name VARCHAR,
+    description TEXT
+  )`);
+
+  dw.run(`CREATE TABLE IF NOT EXISTS dim_product (
+    product_id INTEGER PRIMARY KEY,
+    product_name VARCHAR,
+    nominal INTEGER,
+    price DECIMAL,
+    provider_id INTEGER,
+    category_id INTEGER
+  )`);
+
+  dw.run(`CREATE TABLE IF NOT EXISTS dim_payment (
+    payment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    payment_method VARCHAR
+  )`);
+
+  dw.run(`CREATE TABLE IF NOT EXISTS dim_date (
+    date_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    full_date DATE,
+    day INTEGER,
+    month INTEGER,
+    quarter INTEGER,
+    year INTEGER,
+    weekday VARCHAR
+  )`);
+
+  dw.run(`CREATE TABLE IF NOT EXISTS fact_sales (
+    fact_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    branch_id INTEGER,
+    employee_id INTEGER,
+    customer_id INTEGER,
+    product_id INTEGER,
+    provider_id INTEGER,
+    category_id INTEGER,
+    date_id INTEGER,
+    payment_id INTEGER,
+    quantity INTEGER,
+    unit_price DECIMAL,
+    subtotal DECIMAL,
+    total_transaction DECIMAL
+  )`);
+});
+
+console.log("✅ Database setup completed!");
